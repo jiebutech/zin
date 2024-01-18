@@ -1,0 +1,5 @@
+app:
+  listen: :8000
+  debug: true
+  env: dev
+log:

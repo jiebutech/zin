@@ -1,0 +1,57 @@
+workflow:
+  rules:
+    # 只处理测试环境和开发环境的pipeline
+    - if: $CI_COMMIT_BRANCH =~ /^(feat\/|fix\/).*$/
+      when: always
+    - if: $CI_COMMIT_BRANCH == "test"
+      when: always
+    - when: never
+
+
+stages:
+  - lint
+  - test
+  - build
+  - deploy
+
+variables:
+  GIT_DEPTH: 0
+
+lint:
+  stage: lint
+  script:
+    - echo "Running lint tests"
+    - golangci-lint run -v ./...
+
+test:
+  stage: test
+  script:
+    - echo "Running unit tests"
+    - go test ./...
+
+build:
+  stage: build
+  script:
+    - echo "Building Docker image"
+    - echo "docker build -t 192.168.1.202:5000/$CI_PROJECT_NAME:test  ."
+    - docker build -t 192.168.1.202:5000/$CI_PROJECT_NAME:test  .
+    - docker push 192.168.1.202:5000/$CI_PROJECT_NAME:test
+
+deploy:
+  stage: deploy
+  script:
+    - echo "Deploying to Kubernetes"
+    # Add your Kubernetes deployment commands here
+    # For example, you can use kubectl apply -f your_deployment.yaml
+    # deploy to the local docker
+    - export APP_PORT=$(yq '.app.listen' ./conf/application.test.yaml)
+    - export containerID=$(docker container ls --all | grep -E ".*? $CI_PROJECT_NAME$" | awk  '{print $1}')
+    - > 
+      if [ -z "$containerID" ]; then
+        echo "docker container not exists. skip remove "
+      else
+        docker container ls --all | grep -E ".*? $CI_PROJECT_NAME\$" | awk  '{print $1}' | xargs docker container stop
+        docker container ls --all | grep -E ".*? $CI_PROJECT_NAME\$" | awk  '{print $1}' | xargs docker container rm
+      fi
+    - docker run -d --name $CI_PROJECT_NAME -p $APP_PORT:80 192.168.1.202:5000/$CI_PROJECT_NAME:test
+
